@@ -17,8 +17,10 @@ public sealed class MainForm : Form
         AllowDrop = true;
         DragEnter += (_, e) => { if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true) e.Effect = DragDropEffects.Copy; };
         DragDrop += (_, e) => { if (e.Data?.GetData(DataFormats.FileDrop) is string[] paths && paths.Length > 0) Open(paths[0]); };
-        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, Padding = new Padding(5), AutoSize = false };
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, Padding = new Padding(5), AutoSize = true, WrapContents = true };
         AddButton(bar, "Open", (_, _) => PickOpen());
+        AddButton(bar, "Open Lua", (_, _) => PickLua());
+        AddButton(bar, "View Lua", (_, _) => ViewSelectedLua());
         AddButton(bar, "New ZIP", (_, _) => NewZip());
         AddButton(bar, "Add Files", (_, _) => AddFiles());
         AddButton(bar, "Extract Selected", (_, _) => Extract(true));
@@ -31,7 +33,7 @@ public sealed class MainForm : Form
         listing.Columns.Add("Size", 125, HorizontalAlignment.Right);
         listing.Columns.Add("Packed", 125, HorizontalAlignment.Right);
         listing.Columns.Add("Compression", 130);
-        listing.DoubleClick += (_, _) => Extract(true);
+        listing.DoubleClick += (_, _) => { var items = Selected(); if (items.Count == 1 && IsLuaName(items[0].Name)) ViewSelectedLua(); else Extract(true); };
         var bottom = new StatusStrip(); bottom.Items.Add(status);
         Controls.Add(listing); Controls.Add(bar); Controls.Add(bottom);
         FormClosed += (_, _) => archive?.Dispose();
@@ -45,11 +47,12 @@ public sealed class MainForm : Form
     }
     private void PickOpen()
     {
-        using var d = new OpenFileDialog { Filter = "Archive files (*.zip)|*.zip|All files (*.*)|*.*" };
+        using var d = new OpenFileDialog { Filter = "Archives and Lua (*.zip;*.lua;*.luac;*.dnax;*.sx)|*.zip;*.lua;*.luac;*.dnax;*.sx|All files (*.*)|*.*" };
         if (d.ShowDialog(this) == DialogResult.OK) Open(d.FileName);
     }
     private void Open(string path)
     {
+        if (IsLuaName(path)) { OpenLooseLua(path); return; }
         try
         {
             archive?.Dispose(); archive = null;
@@ -60,6 +63,35 @@ public sealed class MainForm : Form
         }
         catch (Exception ex) { Error(ex); }
     }
+    private static bool IsLuaName(string path) => new[] { ".lua", ".luac", ".dnax", ".sx" }.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
+    private void PickLua()
+    {
+        using var dialog = new OpenFileDialog { Filter = "Lua / configuration (*.lua;*.luac;*.dnax;*.sx)|*.lua;*.luac;*.dnax;*.sx|All files (*.*)|*.*" };
+        if (dialog.ShowDialog(this) == DialogResult.OK) OpenLooseLua(dialog.FileName);
+    }
+    private void OpenLooseLua(string path)
+    {
+        try
+        {
+            if (new FileInfo(path).Length > LuaDecoder.MaximumBytes) throw new InvalidDataException("Lua viewer limit is 16 MiB per file.");
+            new LuaViewerForm(Path.GetFileName(path), File.ReadAllBytes(path), path).Show(this);
+        }
+        catch (Exception error) { Error(error); }
+    }
+    private void ViewSelectedLua()
+    {
+        if (archive == null) { PickLua(); return; }
+        var selected = Selected();
+        if (selected.Count != 1) { MessageBox.Show(this, "Select one Lua/configuration entry to view."); return; }
+        try
+        {
+            if (selected[0].Name.EndsWith('/') || selected[0].Size > LuaDecoder.MaximumBytes) throw new InvalidDataException("Select a file no larger than 16 MiB.");
+            byte[] bytes = archive.Read(selected[0]);
+            new LuaViewerForm(Path.GetFileName(archive.PathName) + " :: " + selected[0].Name, bytes, archive.PathName).Show(this);
+        }
+        catch (Exception error) { Error(error); }
+    }
+
     private void RefreshList()
     {
         listing.BeginUpdate(); listing.Items.Clear();

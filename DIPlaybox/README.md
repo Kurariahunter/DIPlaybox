@@ -34,8 +34,8 @@ The resulting application is `publish\DIPlaybox.exe`. The SDK is required to bui
 
 ## Limitations / cautions
 
-- **Source-only deliverable:** not compiled or runtime-tested in this environment (no .NET SDK available here).
-- DI archive reading is adapted from `DI3Archives.cs`; **must be validated against real Disney Infinity archives**.
+- The Lua viewer update builds successfully and passed 24 decoder/highlighting/archive assertions. Full interactive UI coverage and the optional external unluac action still need manual testing.
+- DI archive reads were checked against real data.zip and gamedb/core/core.zip samples; this does not certify all archive variants.
 - DI archives are read-only; no repacking, adding, or deleting.
 - DI entry compression methods 0 (stored) and 8 (deflate) only.
 - The original QuickBMS script may have special cases for `.dct`, `psx_` archives, and other compression methods. These are **not implemented**.
@@ -52,3 +52,7 @@ The resulting application is `publish\DIPlaybox.exe`. The SDK is required to bui
 - `Program.cs`: Windows application entry point.
 
 This is a standalone app; no Unity Editor or QuickBMS dependency.
+
+## Lua viewer update
+
+See [LUA_VIEWER.md](LUA_VIEWER.md) for native Lua 5.1 table decoding, syntax highlighting, archive-member viewing and the optional external unluac action.
