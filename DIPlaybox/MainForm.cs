@@ -21,6 +21,8 @@ public sealed class MainForm : Form
         AddButton(bar, "Open", (_, _) => PickOpen());
         AddButton(bar, "Open Lua", (_, _) => PickLua());
         AddButton(bar, "View Lua", (_, _) => ViewSelectedLua());
+        AddButton(bar, "Open BENT / MTB", (_, _) => PickResource());
+        AddButton(bar, "View BENT / MTB", (_, _) => ViewSelectedResource());
         AddButton(bar, "New ZIP", (_, _) => NewZip());
         AddButton(bar, "Add Files", (_, _) => AddFiles());
         AddButton(bar, "Extract Selected", (_, _) => Extract(true));
@@ -33,7 +35,7 @@ public sealed class MainForm : Form
         listing.Columns.Add("Size", 125, HorizontalAlignment.Right);
         listing.Columns.Add("Packed", 125, HorizontalAlignment.Right);
         listing.Columns.Add("Compression", 130);
-        listing.DoubleClick += (_, _) => { var items = Selected(); if (items.Count == 1 && IsLuaName(items[0].Name)) ViewSelectedLua(); else Extract(true); };
+        listing.DoubleClick += (_, _) => { var items = Selected(); if (items.Count == 1 && IsResourceName(items[0].Name)) ViewSelectedResource(); else if (items.Count == 1 && IsLuaName(items[0].Name)) ViewSelectedLua(); else Extract(true); };
         var bottom = new StatusStrip(); bottom.Items.Add(status);
         Controls.Add(listing); Controls.Add(bar); Controls.Add(bottom);
         FormClosed += (_, _) => archive?.Dispose();
@@ -47,11 +49,12 @@ public sealed class MainForm : Form
     }
     private void PickOpen()
     {
-        using var d = new OpenFileDialog { Filter = "Archives and Lua (*.zip;*.lua;*.luac;*.dnax;*.sx)|*.zip;*.lua;*.luac;*.dnax;*.sx|All files (*.*)|*.*" };
+        using var d = new OpenFileDialog { Filter = "Supported files|*.zip;*.lua;*.luac;*.dnax;*.sx;*.bent;*.mtb|All files (*.*)|*.*" };
         if (d.ShowDialog(this) == DialogResult.OK) Open(d.FileName);
     }
     private void Open(string path)
     {
+        if (IsResourceName(path)) { OpenResource(path); return; }
         if (IsLuaName(path)) { OpenLooseLua(path); return; }
         try
         {
@@ -64,6 +67,33 @@ public sealed class MainForm : Form
         catch (Exception ex) { Error(ex); }
     }
     private static bool IsLuaName(string path) => new[] { ".lua", ".luac", ".dnax", ".sx" }.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
+    private static bool IsResourceName(string path) => new[] { ".bent", ".mtb" }.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
+    private void PickResource()
+    {
+        using var dialog=new OpenFileDialog {Filter="BENT / MTB|*.bent;*.mtb|All files|*.*"};
+        if(dialog.ShowDialog(this)==DialogResult.OK)OpenResource(dialog.FileName);
+    }
+    private void OpenResource(string path)
+    {
+        try
+        {
+            if(new FileInfo(path).Length>64*1024*1024)throw new InvalidDataException("Resource viewer limit is 64 MiB.");
+            new ResourceViewerForm(Path.GetFileName(path),File.ReadAllBytes(path)).Show(this);
+        }
+        catch(Exception ex){Error(ex);}
+    }
+    private void ViewSelectedResource()
+    {
+        if(archive==null){PickResource();return;}
+        var selected=Selected();
+        if(selected.Count!=1||!IsResourceName(selected[0].Name)){MessageBox.Show(this,"Select one BENT or MTB entry.");return;}
+        try
+        {
+            if(selected[0].Size>64*1024*1024)throw new InvalidDataException("Resource viewer limit is 64 MiB.");
+            new ResourceViewerForm(Path.GetFileName(archive.PathName)+" :: "+selected[0].Name,archive.Read(selected[0])).Show(this);
+        }
+        catch(Exception ex){Error(ex);}
+    }
     private void PickLua()
     {
         using var dialog = new OpenFileDialog { Filter = "Lua / configuration (*.lua;*.luac;*.dnax;*.sx)|*.lua;*.luac;*.dnax;*.sx|All files (*.*)|*.*" };

@@ -56,3 +56,7 @@ This is a standalone app; no Unity Editor or QuickBMS dependency.
 ## Lua viewer update
 
 See [LUA_VIEWER.md](LUA_VIEWER.md) for native Lua 5.1 table decoding, syntax highlighting, archive-member viewing and the optional external unluac action.
+
+## BENT / MTB viewers
+
+Read-only collapsed trees for supported BENT records and MTB sections/material/sampler bindings. Open loose files or double-click archive members. Includes search, offsets, hex and explicit unsupported-format diagnostics. See [BENT_MTB_VIEWERS.md](BENT_MTB_VIEWERS.md).
