@@ -23,6 +23,9 @@ public sealed class MainForm : Form
         AddButton(bar, "View Lua", (_, _) => ViewSelectedLua());
         AddButton(bar, "Open BENT / MTB", (_, _) => PickResource());
         AddButton(bar, "View BENT / MTB", (_, _) => ViewSelectedResource());
+        AddButton(bar, "Open texture / model", (_, _) => PickPreview());
+        AddButton(bar, "View texture / model", (_, _) => ViewSelectedPreview());
+        AddButton(bar, "Texture assets folder", (_, _) => ChoosePreviewAssets());
         AddButton(bar, "New ZIP", (_, _) => NewZip());
         AddButton(bar, "Add Files", (_, _) => AddFiles());
         AddButton(bar, "Extract Selected", (_, _) => Extract(true));
@@ -35,7 +38,7 @@ public sealed class MainForm : Form
         listing.Columns.Add("Size", 125, HorizontalAlignment.Right);
         listing.Columns.Add("Packed", 125, HorizontalAlignment.Right);
         listing.Columns.Add("Compression", 130);
-        listing.DoubleClick += (_, _) => { var items = Selected(); if (items.Count == 1 && IsResourceName(items[0].Name)) ViewSelectedResource(); else if (items.Count == 1 && IsLuaName(items[0].Name)) ViewSelectedLua(); else Extract(true); };
+        listing.DoubleClick += (_, _) => { var items = Selected(); if (items.Count == 1 && IsPreviewName(items[0].Name)) ViewSelectedPreview(); else if (items.Count == 1 && IsResourceName(items[0].Name)) ViewSelectedResource(); else if (items.Count == 1 && IsLuaName(items[0].Name)) ViewSelectedLua(); else Extract(true); };
         var bottom = new StatusStrip(); bottom.Items.Add(status);
         Controls.Add(listing); Controls.Add(bar); Controls.Add(bottom);
         FormClosed += (_, _) => archive?.Dispose();
@@ -49,11 +52,12 @@ public sealed class MainForm : Form
     }
     private void PickOpen()
     {
-        using var d = new OpenFileDialog { Filter = "Supported files|*.zip;*.lua;*.luac;*.dnax;*.sx;*.bent;*.mtb|All files (*.*)|*.*" };
+        using var d = new OpenFileDialog { Filter = "Supported files|*.zip;*.lua;*.luac;*.dnax;*.sx;*.bent;*.mtb;*.oct;*.tbody;*.tstream;*.dds;*.png|All files (*.*)|*.*" };
         if (d.ShowDialog(this) == DialogResult.OK) Open(d.FileName);
     }
     private void Open(string path)
     {
+        if (IsPreviewName(path)) { Preview(path,null); return; }
         if (IsResourceName(path)) { OpenResource(path); return; }
         if (IsLuaName(path)) { OpenLooseLua(path); return; }
         try
@@ -68,6 +72,68 @@ public sealed class MainForm : Form
     }
     private static bool IsLuaName(string path) => new[] { ".lua", ".luac", ".dnax", ".sx" }.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
     private static bool IsResourceName(string path) => new[] { ".bent", ".mtb" }.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
+    private static bool IsPreviewName(string path) => new[] { ".oct", ".tbody", ".tstream", ".dds", ".png" }.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
+    private void PickPreview()
+    {
+        using var dialog=new OpenFileDialog{Filter="Textures / OCT models|*.tbody;*.tstream;*.dds;*.png;*.oct|All files|*.*"};
+        if(dialog.ShowDialog(this)==DialogResult.OK)Preview(dialog.FileName,null);
+    }
+    private void ViewSelectedPreview()
+    {
+        if(archive==null){PickPreview();return;}var selected=Selected();
+        if(selected.Count!=1||!IsPreviewName(selected[0].Name)){MessageBox.Show(this,"Select one texture or model OCT.");return;}
+        Preview(selected[0].Name,selected[0]);
+    }
+    private void ChoosePreviewAssets()
+    {
+        using var folder=new FolderBrowserDialog{Description="Choose game root, assets, or extracted textures folder",SelectedPath=PreviewAssets.Root};
+        if(folder.ShowDialog(this)==DialogResult.OK)try{PreviewAssets.SetRoot(folder.SelectedPath);status.Text="Texture lookup: "+folder.SelectedPath;}catch(Exception ex){Error(ex);}
+    }
+    private async void Preview(string name,ArchiveItem? member)
+    {
+        if(!Enabled)return;
+        var source=member==null?null:archive;long owner=Handle.ToInt64();string folder=name.Replace('\\','/');folder=folder[..(folder.LastIndexOf('/')+1)];
+        Enabled=false;UseWaitCursor=true;status.Text="Loading preview…";
+        try
+        {
+            if(Path.GetExtension(name).Equals(".oct",StringComparison.OrdinalIgnoreCase))
+            {
+                ModelStage? stage=null;
+                try
+                {
+                    var model=await Task.Run(()=>
+                    {
+                        string path=name;
+                        if(member!=null){stage=new ModelStage(source!,member);path=stage.ModelPath;}
+                        else if(new FileInfo(path).Length>64*1024*1024)throw new InvalidDataException("OCT limit: 64 MiB.");
+                        return DIPlaybox.Preview.PreviewApi.LoadModel(path,filename=>PreviewAssets.Resolve(filename,member==null?path:null,source,folder));
+                    });
+                    UseWaitCursor=false;DIPlaybox.Preview.PreviewApi.ShowModel(name,model,owner);
+                }
+                finally{stage?.Dispose();}
+            }
+            else
+            {
+                var texture=await Task.Run(()=>
+                {
+                    long size=member?.Size??new FileInfo(name).Length;if(size>64*1024*1024)throw new InvalidDataException("Texture limit: 64 MiB.");
+                    byte[] bytes=member==null?File.ReadAllBytes(name):source!.Read(member);
+                    byte[]? stream=null;
+                    string streamWarning="";
+                    string id=Path.GetFileNameWithoutExtension(name);
+                    if(!name.EndsWith(".tstream",StringComparison.OrdinalIgnoreCase)&&id.Length==16&&id.All(Uri.IsHexDigit))
+                        try{stream=PreviewAssets.Resolve(id+".tstream",member==null?name:null,source,folder);}
+                        catch(Exception ex) when(ex is IOException or InvalidDataException or NotSupportedException or ArgumentException){streamWarning=" · stream lookup: "+ex.Message;}
+                    var decoded=DIPlaybox.Preview.PreviewApi.PrepareTexture(bytes,stream);
+                    return decoded with{Format=decoded.Format+streamWarning};
+                });
+                UseWaitCursor=false;DIPlaybox.Preview.PreviewApi.ShowTexture(name,texture,owner);
+            }
+            status.Text="Preview closed. Source files unchanged.";
+        }
+        catch(Exception ex){status.Text="Preview unavailable: "+ex.Message;Error(ex);}
+        finally{Enabled=true;UseWaitCursor=false;Activate();}
+    }
     private void PickResource()
     {
         using var dialog=new OpenFileDialog {Filter="BENT / MTB|*.bent;*.mtb|All files|*.*"};

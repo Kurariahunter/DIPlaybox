@@ -60,3 +60,7 @@ See [LUA_VIEWER.md](LUA_VIEWER.md) for native Lua 5.1 table decoding, syntax hig
 ## BENT / MTB viewers
 
 Read-only collapsed trees for supported BENT records and MTB sections/material/sampler bindings. Open loose files or double-click archive members. Includes search, offsets, hex and explicit unsupported-format diagnostics. See [BENT_MTB_VIEWERS.md](BENT_MTB_VIEWERS.md).
+
+## Texture and model viewers
+
+Double-click supported TBODY/DDS/TSTREAM/PNG textures or model OCT entries. Includes texture previews and PNG-copy export, textured bind-pose geometry, source normals, skeleton overlay, orbit/zoom, and targeted external texture lookup. See [TEXTURE_MODEL_VIEWERS.md](TEXTURE_MODEL_VIEWERS.md) for supported formats and limits. Build the main project normally; its WPF preview library is referenced automatically.

@@ -7,4 +7,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>DIPlaybox</AssemblyName>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Preview/**/*.cs" />
+    <EmbeddedResource Remove="Preview/**/*" />
+    <None Remove="Preview/**/*" />
+    <ProjectReference Include="Preview/DIPlaybox.Preview.csproj" />
+  </ItemGroup>
 </Project>
